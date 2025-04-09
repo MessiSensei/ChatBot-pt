@@ -6,7 +6,7 @@ venv/
 
 # Ignore dataset and vocab files
 *.txt
-
+*.jsonl 
 # Ignore cache and Python internals
 __pycache__/
 *.pyc
