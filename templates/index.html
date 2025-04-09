@@ -392,7 +392,7 @@
         const data = await res.json();
         statusDiv.innerText = data.status;
 
-        // 🧠 Load config if exists
+        //  Load config if exists
         const configRes = await fetch(`/model-config/${selected}`);
         const config = await configRes.json();
         if (config && config.embed_size) {
