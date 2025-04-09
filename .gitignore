@@ -1,0 +1,14 @@
+# Ignore virtual environment
+venv/
+
+# Ignore PyTorch model files
+*.pt
+
+# Ignore dataset and vocab files
+*.txt
+
+# Ignore cache and Python internals
+__pycache__/
+*.pyc
+*.pyo
+*.log

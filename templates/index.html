@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>AI Chatbot Trainer</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <style>
+    #chatbox, #logPanel, #datasetPreview {
+      font-family: monospace;
+    }
+    .plot-img {
+      width: 48%;
+      display: inline-block;
+      border-radius: 0.5rem;
+    }
+    #progressBar {
+      height: 10px;
+      background: #e5e7eb;
+    }
+    #progressFill {
+      height: 100%;
+      width: 0;
+      background: #10b981;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 p-6">
+  <div class="max-w-5xl mx-auto bg-white rounded-xl shadow-md p-6">
+    <h2 class="text-2xl font-bold mb-4">AI Chatbot Trainer & UI</h2>
+
+    <div id="chatbox" class="border rounded p-4 h-64 overflow-y-scroll bg-gray-50 mb-4"></div>
+    <input type="text" id="userInput" placeholder="Type a message..." class="w-full p-2 border rounded mb-2">
+    <label for="maxTokens" class="text-sm text-gray-600">Max Tokens (output limit):</label>
+    <div class="mb-4">
+      <label for="temperature" class="text-sm text-gray-600">Temperature: <span id="tempVal">1.0</span></label>
+      <input type="range" min="0.1" max="2.0" step="0.1" value="1.0" id="temperature" class="w-full">
+    </div>
+    <div class="mb-4">
+      <label for="decodingMethod" class="text-sm text-gray-600">Decoding Method:</label>
+      <select id="decodingMethod" class="w-full p-2 border rounded">
+        <option value="sampling" selected>Top-k / Top-p Sampling</option>
+        <option value="beam">Beam Search</option>
+        <option value="greedy">Greedy (Deterministic)</option>
+      </select>
+    </div>
+
+    <div class="mb-4">
+      <label for="topK" class="text-sm text-gray-600">Top-K Sampling: <span id="topKVal">0</span></label>
+      <input type="range" min="0" max="100" step="5" value="0" id="topK" class="w-full">
+    </div>
+    <div class="mb-4">
+      <label for="topP" class="text-sm text-gray-600">Top-P (Nucleus Sampling): <span id="topPVal">0.0</span></label>
+      <input type="range" min="0.0" max="1.0" step="0.05" value="0.0" id="topP" class="w-full">
+    </div>
+
+    <input type="number" id="maxTokens" value="30" class="w-full p-2 border rounded mb-4">
+    <button onclick="sendMessage()" class="bg-blue-600 text-white px-4 py-2 rounded w-full hover:bg-blue-700">Send</button>
+
+    <h3 class="text-xl font-semibold mt-6"> Model Management</h3>
+    <label class="text-sm text-gray-600">Select a model:</label>
+    <select id="modelList" class="w-full p-2 border rounded"></select>
+    <div class="flex gap-2 mt-2">
+      <button onclick="loadModel()" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Load</button>
+      <button onclick="downloadModel()" class="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600">⬇ Download</button>
+    </div>
+
+    <h3 class="text-xl font-semibold mt-6">⚙ Train New Model</h3>
+    <div class="grid grid-cols-2 gap-4">
+      <div>
+        <label class="text-sm text-gray-600">Model Name:</label>
+        <input type="text" id="modelName" placeholder="e.g. chatbot_v2.pt" class="w-full p-2 border rounded">
+      </div>
+      <div>
+        <label class="text-sm text-gray-600">Epochs:</label>
+        <input type="number" id="epochs" value="10" class="w-full p-2 border rounded">
+      </div>
+      <div>
+        <label class="text-sm text-gray-600">Embedding Size:</label>
+        <input type="number" id="embedSize" value="32" class="w-full p-2 border rounded">
+      </div>
+      <div>
+        <label class="text-sm text-gray-600">Hidden Size:</label>
+        <input type="number" id="hiddenSize" value="64" class="w-full p-2 border rounded">
+      </div>
+      <div>
+        <label class="text-sm text-gray-600">Batch Size:</label>
+        <input type="number" id="batchSize" value="2" class="w-full p-2 border rounded">
+      </div>
+      <div>
+        <label class="text-sm text-gray-600">Learning Rate:</label>
+        <input type="number" step="0.0001" id="lr" value="0.001" class="w-full p-2 border rounded">
+      </div>
+      <div class="mb-4">
+      <label for="teacherForcing" class="font-medium mr-2" title="Use 1.0 for full teacher forcing (best early in training), 0.0 for no guidance.">Teacher Forcing Ratio:</label>
+      <input 
+        type="number" 
+        id="teacherForcing" 
+        value="1.0" 
+        step="0.1" 
+        min="0.0" 
+        max="1.0"
+        class="border rounded p-1 w-24"
+        title="Range: 0.0 (no teacher forcing) to 1.0 (full teacher forcing). Try 1.0 early in training."
+        placeholder="0.0–1.0"
+      >
+      <span class="text-sm text-gray-500 ml-2">(0.0 to 1.0)</span>
+    </div>
+    </div>
+    <div class="flex items-center mt-4">
+          <label for="fineTuneToggle" class="mr-2 text-sm text-gray-600">Continue Training (Fine-Tune):</label>
+          <input type="checkbox" id="fineTuneToggle" class="h-5 w-5 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+    </div>
+    <div class="flex gap-2 mt-4">
+      <button id="trainBtn" onclick="startTraining()" class="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700">Start Training</button>
+      <button onclick="stopTraining()" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">Stop Training</button>
+    </div>
+    <div id="status" class="mt-2 text-sm text-gray-800"></div>
+
+    <h3 class="text-xl font-semibold mt-6">Training Logs</h3>
+    <div id="logPanel" class="bg-black text-green-400 border p-4 h-40 overflow-y-scroll rounded"></div>
+    <div id="progressBar" class="rounded overflow-hidden mt-2">
+      <div id="progressFill"></div>
+    </div>
+    <div class="mb-4">
+      <label for="topKSelect" class="font-medium">Top-K Tokens for Confusion Matrix:</label>
+      <select id="topKSelect" class="ml-2 border border-gray-300 rounded p-1">
+        <option value="10">Top 10</option>
+        <option value="20" selected>Top 20</option>
+        <option value="30">Top 30</option>
+        <option value="50">Top 50</option>
+        <option value="100">Top 100</option>
+      </select>
+    </div>
+
+    <h3 class="text-xl font-semibold mt-6">Training Loss, Accuracy & BLEU Score</h3>
+    <div class="flex flex-wrap gap-4 justify-between">
+      <img id="lossPlot" class="plot-img" src="/static/loss_plot.png" alt="Loss Plot">
+      <img id="accPlot" class="plot-img" src="/static/accuracy_plot.png" alt="Accuracy Plot">
+      <img id="bleuPlot" class="plot-img" src="/static/bleu_plot.png" alt="BLEU Plot">
+      <img id="perplexityPlot" class="plot-img" src="/static/perplexity_plot.png" alt="Perplexity Plot">
+      <img id="prfPlot" class="plot-img" src="/static/prf_plot.png" alt="Precision, Recall, F1 Plot">
+      <img id="confusionPlot" class="plot-img" src="/static/confusion_matrix.png" alt="Confusion Matrix">
+
+
+    </div>
+
+
+    <div class="card mt-3">
+  <h3>Attention Heatmap</h3>
+  <img id="heatmap" src="/static/attention_heatmap.png" alt="Attention Heatmap" width="100%">
+</div>
+
+    <h3 class="text-xl font-semibold mt-6"> Add More to Dataset</h3>
+    <form id="uploadForm" enctype="multipart/form-data" class="mb-2">
+      <input type="file" name="file" id="fileInput" accept=".txt,.csv" class="w-full p-2 border rounded">
+      <button type="submit" class="mt-2 bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700 w-full">Upload Dataset</button>
+    </form>
+
+    <h3 class="text-xl font-semibold"> Clean Duplicate Lines</h3>
+    <button onclick="cleanDataset()" class="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"> Clean Dataset</button>
+
+    <h3 class="text-xl font-semibold mt-6"> Dataset Preview</h3>
+    <div id="datasetPreview" class="h-48 overflow-y-scroll bg-gray-50 border p-4 rounded text-sm"></div>
+  </div>
+
+  <script>
+    const tempSlider = document.getElementById("temperature");
+    const topKSlider = document.getElementById("topK");
+    const topPSlider = document.getElementById("topP");
+
+    tempSlider.addEventListener("input", () => document.getElementById("tempVal").innerText = tempSlider.value);
+    topKSlider.addEventListener("input", () => document.getElementById("topKVal").innerText = topKSlider.value);
+    topPSlider.addEventListener("input", () => document.getElementById("topPVal").innerText = topPSlider.value);
+
+    document.getElementById("heatmap").src = "/static/attention_heatmap.png?ts=" + Date.now();
+    const trainBtn = document.getElementById("trainBtn");
+    async function showToast(title, icon) {
+      await Swal.fire({ title, icon, timer: 1500, showConfirmButton: false });
+    }
+
+    document.getElementById("uploadForm").addEventListener("submit", async function (e) {
+      e.preventDefault();
+      const fileInput = document.getElementById("fileInput");
+      const formData = new FormData();
+      formData.append("file", fileInput.files[0]);
+      const res = await fetch("/upload", { method: "POST", body: formData });
+      const result = await res.json();
+      showToast(result.status, "success");
+      fetchDataset();
+    });
+
+    async function cleanDataset() {
+      try {
+        // Show loading alert with spinner
+        Swal.fire({
+          title: "Cleaning Dataset...",
+          text: "Please wait a moment.",
+          allowOutsideClick: false,
+          didOpen: () => {
+            Swal.showLoading();
+          }
+        });
+
+        const res = await fetch("/clean-dataset", { method: "POST" });
+        const contentType = res.headers.get("Content-Type");
+
+        if (!res.ok) {
+          let errorMsg = " Cleaning failed.";
+          if (contentType && contentType.includes("application/json")) {
+            const result = await res.json();
+            errorMsg = result.status || errorMsg;
+          }
+          Swal.fire("Error", errorMsg, "error");
+          return;
+        }
+
+        const result = await res.json();
+        Swal.fire(" Success", result.status || "Dataset cleaned successfully!", "success");
+        fetchDataset(); // Refresh the preview
+
+      } catch (err) {
+        Swal.fire("Error", "⚠ Dataset cleaning crashed: " + err.message, "error");
+      }
+    }
+
+
+
+
+  async function startTraining() {
+    const topK = parseInt(document.getElementById("topKSelect").value);
+
+    const config = {
+      model_name: document.getElementById("modelName").value.trim(),
+      epochs: parseInt(document.getElementById("epochs").value),
+      embed_size: parseInt(document.getElementById("embedSize").value),
+      hidden_size: parseInt(document.getElementById("hiddenSize").value),
+      batch_size: parseInt(document.getElementById("batchSize").value),
+      learning_rate: parseFloat(document.getElementById("lr").value),
+      teacher_forcing_ratio: parseFloat(document.getElementById("teacherForcing").value),
+      fine_tune: document.getElementById("fineTuneToggle").checked,
+      top_k_tokens: topK
+    };
+
+    trainBtn.disabled = true;
+    const res = await fetch("/train", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(config)
+    });
+
+    const data = await res.json();
+    statusDiv.innerText = data.status;
+    logPanel.innerText = "";
+    progressFill.style.width = "0%";
+    streamLogs(config.epochs);
+  }
+
+    function streamLogs(totalEpochs) {
+      const eventSource = new EventSource("/train-stream");
+      let currentEpoch = 0;
+      eventSource.onmessage = function (event) {
+        logPanel.innerText += event.data + "\n";
+        logPanel.scrollTop = logPanel.scrollHeight;
+
+        if (event.data.includes("Epoch")) {
+          currentEpoch++;
+          const percent = Math.min(100, Math.round((currentEpoch / totalEpochs) * 100));
+          progressFill.style.width = percent + "%";
+        }
+
+        if (event.data.includes(" Training complete")) {
+          fetchModels();
+          statusDiv.innerText = " Training completed and model loaded.";
+          progressFill.style.width = "100%";
+          updatePlots();
+          eventSource.close();
+          trainBtn.disabled = false;
+        }
+      };
+    }
+
+    const chatbox = document.getElementById("chatbox");
+    const lossPlot = document.getElementById("lossPlot");
+    const accPlot = document.getElementById("accPlot");
+    const statusDiv = document.getElementById("status");
+    const logPanel = document.getElementById("logPanel");
+    const progressFill = document.getElementById("progressFill");
+    const datasetPreview = document.getElementById("datasetPreview");
+
+    function appendMessage(sender, text) {
+      const div = document.createElement("div");
+      div.className = `message ${sender}`;
+      div.innerText = `${sender}: ${text}`;
+      chatbox.appendChild(div);
+      chatbox.scrollTop = chatbox.scrollHeight;
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById("userInput");
+      const msg = input.value.trim();
+      if (!msg) return;
+
+      appendMessage("You", msg);
+      input.value = "";
+
+      const maxTokens = parseInt(document.getElementById("maxTokens").value);
+      const temperature = parseFloat(document.getElementById("temperature").value);
+      const topK = parseInt(document.getElementById("topK").value);
+      const topP = parseFloat(document.getElementById("topP").value);
+      const decoding = document.getElementById("decodingMethod").value;
+
+      const res = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: msg,
+          max_tokens: maxTokens,
+          temperature,
+          top_k: topK,
+          top_p: topP, 
+          decoding
+        })
+      });
+
+      const data = await res.json();
+      appendMessage("Bot", data.reply);
+    }
+
+
+
+    function streamLogs(totalEpochs) {
+      const eventSource = new EventSource("/train-stream");
+      let currentEpoch = 0;
+      eventSource.onmessage = function (event) {
+        logPanel.innerText += event.data + "\n";
+        logPanel.scrollTop = logPanel.scrollHeight;
+
+        if (event.data.includes("Epoch")) {
+          currentEpoch++;
+          const percent = Math.min(100, Math.round((currentEpoch / totalEpochs) * 100));
+          progressFill.style.width = percent + "%";
+        }
+
+        if (event.data.includes(" Training complete")) {
+          fetchModels();
+          statusDiv.innerText = " Training completed and model loaded.";
+          progressFill.style.width = "100%";
+          updatePlots();
+          eventSource.close();
+        }
+      };
+    }
+
+      async function updatePlots() {
+        const res = await fetch("/plot");
+        const data = await res.json();
+        const timestamp = "?ts=" + new Date().getTime();
+
+        lossPlot.src = data.loss + timestamp;
+        accPlot.src = data.accuracy + timestamp;
+        document.getElementById("bleuPlot").src = data.bleu + timestamp;
+        document.getElementById("perplexityPlot").src = data.perplexity + timestamp;
+        document.getElementById("prfPlot").src = data.prf + timestamp;
+        document.getElementById("confusionPlot").src = data.confusion + timestamp;
+
+      }
+
+
+
+
+    async function fetchModels() {
+      const res = await fetch("/models");
+      const data = await res.json();
+      const select = document.getElementById("modelList");
+      select.innerHTML = "";
+      data.forEach(f => {
+        const opt = document.createElement("option");
+        opt.value = f;
+        opt.text = f;
+        select.appendChild(opt);
+      });
+    }
+
+    async function loadModel() {
+        const selected = document.getElementById("modelList").value;
+        const res = await fetch("/select_model", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filename: selected })
+        });
+        const data = await res.json();
+        statusDiv.innerText = data.status;
+
+        // 🧠 Load config if exists
+        const configRes = await fetch(`/model-config/${selected}`);
+        const config = await configRes.json();
+        if (config && config.embed_size) {
+          document.getElementById("modelName").value = selected;
+          document.getElementById("epochs").value = config.epochs;
+          document.getElementById("embedSize").value = config.embed_size;
+          document.getElementById("hiddenSize").value = config.hidden_size;
+          document.getElementById("batchSize").value = config.batch_size;
+          document.getElementById("lr").value = config.learning_rate;
+          document.getElementById("fineTuneToggle").checked = true;
+        }
+      }
+
+
+    function downloadModel() {
+      const selected = document.getElementById("modelList").value;
+      window.location.href = `/download/${selected}`;
+    }
+
+    document.getElementById("uploadForm").addEventListener("submit", async function (e) {
+      e.preventDefault();
+      const fileInput = document.getElementById("fileInput");
+      const formData = new FormData();
+      formData.append("file", fileInput.files[0]);
+      const res = await fetch("/upload", {
+        method: "POST",
+        body: formData
+      });
+      const result = await res.json();
+      statusDiv.innerText = result.status;
+      fetchDataset();
+    });
+
+    async function fetchDataset() {
+      const res = await fetch("/dataset");
+      const data = await res.text();
+      datasetPreview.innerText = " Showing first 1000 lines...\n\n" + data;
+
+    }
+
+    setInterval(updatePlots, 7000);
+    fetchModels();
+    fetchDataset();
+
+    function stopTraining() {
+      fetch("/stop-training", { method: "POST" })
+        .then(res => res.json())
+        .then(data => {
+          statusDiv.innerText = data.status;
+        });
+    }
+  </script>
+</body>
+</html>
