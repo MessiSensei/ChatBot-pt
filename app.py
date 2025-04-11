@@ -1,3 +1,8 @@
+"""
+Author : MessiSensei
+
+Usage: educational purpose 
+"""
 from flask import Flask, render_template, request, jsonify, send_file, Response
 import torch
 import threading
